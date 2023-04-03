@@ -258,39 +258,65 @@ If you choose to skip the code building section, the complete code can be found 
 #include <SPI.h>
 #include <LoRa.h>
 
-int counter = 0;
-int button = 2;
-int buttonState;
+String message;
 
+byte localAddress = 0xBB;  
+byte destination = 0xFF;
+```
+
+In the `setup()` we will begin serial communication and initialize the **LoRa** library.
+
+```arduino
 void setup() {
-  pinMode(button, INPUT_PULLUP);
-  
   Serial.begin(9600);
-  
-  while (!Serial);
-  Serial.println("LoRa Sender");
-  
+  Serial.println("LoRa message service");
   if (!LoRa.begin(868E6)) {
     Serial.println("Starting LoRa failed!");
     while (1);
   }
   delay(1000);
 }
-
 void loop() {
-  buttonState = digitalRead(button);
-  
-  if (buttonState == LOW) {
-    // send packet
-    LoRa.beginPacket();
-    LoRa.print("button pressed");
-    LoRa.endPacket();
-    counter++;
-    Serial.print("Sending packet: ");
-    Serial.println(counter);
-    delay(500);
+  while (Serial.available()) {
+    delay(2);  //delay to allow byte to arrive in input buffer
+    char c = Serial.read();
+    message += c;
   }
+
+  if (message.length() > 0) {
+    Serial.println("Peter: " + message); //name seen in the Serial Monitor
+    LoRa.beginPacket();
+    LoRa.write(destination);              
+    LoRa.write(localAddress);
+    LoRa.print("Peter: " + message); //name seen on the receiving end
+    LoRa.endPacket();
+    message = "";
+  }
+
+  onReceive(LoRa.parsePacket());
+
 }
+void onReceive(int packetSize) {
+  if (packetSize == 0) return;          // if there's no packet, return
+
+  int recipient = LoRa.read();
+  String incoming = "";
+
+  while (LoRa.available()) {
+    incoming += (char)LoRa.read();
+  }
+
+  if (recipient != localAddress && recipient != 0xFF) {
+    Serial.println("This message is not for me.");
+    return;                             // skip rest of function
+  }
+
+  Serial.print(incoming);
+  Serial.print(" || RSSI: ");
+  Serial.println(LoRa.packetRssi());
+  Serial.println();
+}
+
 ```
 
 ### Device #2 Code
@@ -299,58 +325,61 @@ void loop() {
 #include <SPI.h>
 #include <LoRa.h>
 
-String contents = "";
-String buttonPress = "button pressed";
-bool x;
+String message;
 
-int led = 2;
+byte localAddress = 0xFF;  
+byte destination = 0xBB;
 
 void setup() {
-
-  pinMode(led, OUTPUT);
   Serial.begin(9600);
-  while (!Serial);
-  //Wire.begin();
-  Serial.println("LoRa Receiver");
-
+  Serial.println("LoRa message service");
   if (!LoRa.begin(868E6)) {
     Serial.println("Starting LoRa failed!");
     while (1);
   }
+  delay(1000);
+}
+void loop() {
+  while (Serial.available()) {
+    delay(2);  //delay to allow byte to arrive in input buffer
+    char c = Serial.read();
+    message += c;
+  }
+
+  if (message.length() > 0) {
+    Serial.println("Juan: " + message); //name seen in Serial Monitor
+    LoRa.beginPacket();
+    LoRa.write(destination);            
+    LoRa.write(localAddress);
+    LoRa.print("Juan: " + message); //name seen on the receiving end
+    LoRa.endPacket();
+    message = "";
+  }
+
+  onReceive(LoRa.parsePacket());
+
 }
 
-void loop() {
-  // try to parse packet
-  int packetSize = LoRa.parsePacket();
-  if (packetSize) {
-    // received a packet
-    Serial.print("Received packet '");
 
-    // read packet
-    while (LoRa.available()) {  
-      contents += (char)LoRa.read();
-    }
-    
-    // print RSSI of packet
-    Serial.print("' with RSSI ");
-    Serial.println(LoRa.packetRssi());
-    Serial.println(contents);
+void onReceive(int packetSize) {
+  if (packetSize == 0) return;          // if there's no packet, return
 
-    if(contents.equals(buttonPress)){
-      x = !x;
-    }
+  int recipient = LoRa.read();
+  String incoming = "";
 
-    if(x == true) {
-      digitalWrite(led, HIGH);
-      Serial.println("led on");
-    }
-    else {
-      digitalWrite(led, LOW);
-      Serial.println("led off");
-    }
-    
-    contents = "";
+  while (LoRa.available()) {
+    incoming += (char)LoRa.read();
   }
+
+  if (recipient != localAddress && recipient != 0xBB) {
+    Serial.println("This message is not for me.");
+    return;                             // skip rest of function
+  }
+
+  Serial.print(incoming);
+  Serial.print(" || RSSI: ");
+  Serial.println(LoRa.packetRssi());
+  Serial.println();
 }
 ```
 
